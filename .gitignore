@@ -1,0 +1,33 @@
+# Node.js
+node_modules/
+npm-debug.log*
+*.log
+*.js.map
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Build files
+dist/
+build/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Postman collections
+*.postman_collection.json
+*.postman_collection
+
+# Other
+npm-debug.log*
+*.lock
+package-lock.json  # ❌ لا تُضيفه إلى .gitignore، لأنه مهم!
