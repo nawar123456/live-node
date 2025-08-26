@@ -5,7 +5,7 @@ const streamSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true },
   isLive: { type: Boolean, default: false },
-  viewers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  viewers: [String], 
   category: { type: Schema.Types.ObjectId, ref: 'Category' },
   tags: [String],
   type: { type: String, enum: ['Game', 'Music', 'Review', 'Talk', 'Other'], default: 'Other' },

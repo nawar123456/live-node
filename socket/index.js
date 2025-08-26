@@ -1,6 +1,7 @@
 const Message = require('../models/Message');
 const Stream = require('../models/Stream');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 
 // Store offers and viewers in memory (for demo, use Redis/DB for scale)
 const offers = {}; // { streamId: { offer, broadcasterSocketId, viewers: [] } }
@@ -12,21 +13,68 @@ module.exports = (io) => {
     // Join a stream room
     socket.on('join_stream', async ({ streamId, userId }) => {
       try {
+        console.log('[DEBUG] join_stream called with:', { streamId, userId });
+        
         if (!streamId || !userId) {
-          return socket.emit('error', { message: 'streamId and userId are required' });
+          const errorMsg = 'streamId and userId are required';
+          console.log('[ERROR]', errorMsg);
+          return socket.emit('error', { message: errorMsg });
         }
         
+        // التحقق من صحة الـ ObjectId
+        if (!mongoose.Types.ObjectId.isValid(streamId)) {
+          const errorMsg = `Invalid streamId format: ${streamId}`;
+          console.log('[ERROR]', errorMsg);
+          return socket.emit('error', { message: errorMsg });
+        }
+        
+        // البحث عن الـ Stream
+        let stream;
+        try {
+          stream = await Stream.findById(streamId);
+          console.log('[DEBUG] Stream lookup result:', stream ? 'Found' : 'Not found');
+        } catch (lookupErr) {
+          console.log('[ERROR] Stream lookup failed:', lookupErr.message);
+          return socket.emit('error', { message: 'Database lookup failed: ' + lookupErr.message });
+        }
+        
+        if (!stream) {
+          const errorMsg = `Stream not found: ${streamId}`;
+          console.log('[ERROR]', errorMsg);
+          return socket.emit('error', { message: errorMsg });
+        }
+        
+        console.log('[DEBUG] Stream found:', stream._id);
+        
+        // الانضمام للغرفة
         socket.join(streamId);
-        // Increment viewers in DB
-        await Stream.findByIdAndUpdate(streamId, { $addToSet: { viewers: userId } });
-        // Broadcast new viewer count
-        const stream = await Stream.findById(streamId);
-        io.to(streamId).emit('viewer_count', { count: stream.viewers.length });
+        console.log('[DEBUG] Socket joined room:', streamId);
+        
+        // تحديث المشاهدين (مع تجاهل الأخطاء)
+        try {
+          await Stream.findByIdAndUpdate(streamId, { $addToSet: { viewers: userId } });
+          const updatedStream = await Stream.findById(streamId);
+          io.to(streamId).emit('viewer_count', { count: updatedStream.viewers.length });
+          console.log('[DEBUG] Viewer count updated');
+        } catch (dbErr) {
+          console.log('[WARN] Database update failed (continuing):', dbErr.message);
+        }
+
+        // إرسال العرض للمشاهد إذا كان موجود
+        if (offers[streamId] && offers[streamId].offer) {
+          console.log('[DEBUG] Sending offer to viewer:', socket.id);
+          io.to(socket.id).emit('stream_offer', offers[streamId].offer);
+          offers[streamId].viewers.push(socket.id);
+          console.log(`[join_stream] Sent offer to viewer: ${userId}, streamId: ${streamId}`);
+        } else {
+          console.log(`[join_stream] No offer available for streamId: ${streamId}`);
+        }
         
         console.log(`[join_stream] User ${userId} joined stream ${streamId}`);
+        
       } catch (err) {
-        console.error('Error in join_stream:', err);
-        socket.emit('error', { message: 'Failed to join stream' });
+        console.error('[ERROR] in join_stream:', err);
+        socket.emit('error', { message: 'Failed to join stream: ' + err.message });
       }
     });
 
@@ -117,34 +165,6 @@ module.exports = (io) => {
       }
     });
 
-    // Viewer joins and gets offer (enhanced join_stream for WebRTC)
-    socket.on('join_stream', async ({ streamId, userId }) => {
-      try {
-        if (!streamId || !userId) {
-          return socket.emit('error', { message: 'streamId and userId are required' });
-        }
-        
-        socket.join(streamId);
-        // Increment viewers in DB
-        await Stream.findByIdAndUpdate(streamId, { $addToSet: { viewers: userId } });
-        // Broadcast new viewer count
-        const stream = await Stream.findById(streamId);
-        io.to(streamId).emit('viewer_count', { count: stream.viewers.length });
-
-        // Relay offer to this viewer if available
-        if (offers[streamId] && offers[streamId].offer) {
-          io.to(socket.id).emit('stream_offer', offers[streamId].offer);
-          offers[streamId].viewers.push(socket.id);
-          console.log(`[join_stream] Sent offer to viewer: ${userId}, streamId: ${streamId}`);
-        } else {
-          console.log(`[join_stream] No offer available for streamId: ${streamId}`);
-        }
-      } catch (err) {
-        console.error('Error in join_stream:', err);
-        socket.emit('error', { message: 'Failed to join stream' });
-      }
-    });
-
     // Viewer sends answer, relay to broadcaster
     socket.on('stream_answer', ({ streamId, userId, sdp, type }) => {
       try {
@@ -217,4 +237,4 @@ module.exports = (io) => {
       });
     });
   });
-}; 
+};

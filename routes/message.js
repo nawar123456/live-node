@@ -5,6 +5,8 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
+router.use(express.json());
+
 // POST /message/send - Send message to a stream (auth required)
 router.post('/send', auth, async (req, res, next) => {
   try {

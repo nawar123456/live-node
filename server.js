@@ -3,7 +3,15 @@ require('dotenv').config(); // ← مهم إذا كنت تستخدم .env محل
 const http = require('http');
 const mongoose = require('mongoose');
 const socketio = require('socket.io');
+const express = require('express'); // ← إضافة Express
+const path = require('path');       // ← إضافة Path
+
+// إنشاء تطبيق Express
 const app = require('./app');
+app.use(express.json()); // ← هذا هو الحل!
+
+// إضافة خدمة الملفات الثابتة للـ HTML
+app.use(express.static(path.join(__dirname, 'public')));
 
 // استخدم المنفذ الديناميكي
 const PORT = process.env.PORT || 3000;
@@ -36,4 +44,5 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🧪 Test page available at: http://localhost:${PORT}/test-stream.html`);
 });
