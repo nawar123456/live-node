@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dummy Broadcaster</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body { font-family: Arial; margin: 20px; background: #f0f0f0; }
+    .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
+    video { width: 100%; border-radius: 5px; background: #000; }
+    #status { padding: 10px; margin-top: 10px; background: #e9ecef; border-radius: 5px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>Dummy Broadcaster</h2>
+  <video id="localVideo" autoplay muted></video>
+  <div id="status">Initializing...</div>
+</div>
+
+<script>
+  let socket;
+  let peerConnection;
+  const config = {
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  };
+  const streamId = "68acd42547c3ba663616d621"; // your test stream
+  const userId = "507f1f77bcf86cd799439011";
+
+  function updateStatus(msg) {
+    document.getElementById('status').innerText = msg;
+    console.log('[BROADCASTER]', msg);
+  }
+
+  async function startBroadcast() {
+    // Connect to Socket.IO backend
+    socket = io('https://live-node.onrender.com');
+
+    socket.on('connect', () => {
+      updateStatus('✅ Connected to Socket.IO server: ' + socket.id);
+    });
+
+    socket.on('offer-stored', () => {
+      updateStatus('✅ Offer stored on server. Waiting for viewers...');
+    });
+
+    socket.on('stream_answer', async (data) => {
+      updateStatus('📩 Received answer from viewer: ' + data.userId);
+      await peerConnection.setRemoteDescription(new RTCSessionDescription({
+        type: 'answer',
+        sdp: data.sdp
+      }));
+      updateStatus('✅ Answer applied, peer connection established with viewer!');
+    });
+
+    socket.on('ice_candidate', async (data) => {
+      console.log('🧊 Received ICE candidate from viewer');
+      if (data.candidate) {
+        try { await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); }
+        catch(e){ console.error(e); }
+      }
+    });
+
+    // Create PeerConnection
+    peerConnection = new RTCPeerConnection(config);
+
+    // Optional: show local dummy stream
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('localVideo').srcObject = stream;
+    stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+    // Send ICE candidates to server
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate && socket.connected) {
+        socket.emit('ice_candidate', { streamId, userId, candidate: event.candidate });
+      }
+    };
+
+    // Create SDP offer
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    // Send offer to server
+    socket.emit('stream_offer', { streamId, sdp: offer.sdp, type: 'offer' });
+    updateStatus('🛫 Offer sent to server, waiting for viewers...');
+  }
+
+  startBroadcast();
+</script>
+</body>
+</html>
