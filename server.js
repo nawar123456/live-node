@@ -2,8 +2,9 @@ require('dotenv').config(); // ← مهم إذا كنت تستخدم .env محل
 
 const http = require('http');
 const mongoose = require('mongoose');
-const socketio = require('socket.io');
-const express = require('express'); // ← إضافة Express
+const socketio = require('socket.io')(server, {
+  pingInterval: 25000, // send ping every 25s
+  pingTimeout: 60000   // wait up to 60s before killingconst express = require('express'); // ← إضافة Express
 const path = require('path');       // ← إضافة Path
 
 // إنشاء تطبيق Express
