@@ -1,120 +1,139 @@
-const Message = require('../models/Message');
-const Stream = require('../models/Stream');
-const User = require('../models/User');
-const mongoose = require('mongoose');
+// socket.js - إدارة اتصالات الوقت الفعلي (WebSocket) للتطبيق
 
-// Store offers and viewers in memory (for demo, use Redis/DB for scale)
-const offers = {}; // { streamId: { offer, broadcasterSocketId, viewers: [] } }
+// استيراد النماذج (Models) من قاعدة البيانات
+const Message = require('../models/Message'); // نموذج الرسائل
+const Stream = require('../models/Stream');   // نموذج البث
+const User = require('../models/User');       // نموذج المستخدم
+const mongoose = require('mongoose');         // مكتبة للتعامل مع MongoDB
 
+// تخزين العروض (Offers) والمشاهدين في الذاكرة (للاستخدام التجريبي، استخدم Redis/DB للإنتاج)
+// هذا الكائن يخزن معلومات الاتصال المؤقتة ل WebRTC
+// الصيغة: { streamId: { offer, broadcasterSocketId, viewers: [] } }
+const offers = {};
+
+// تصدير الدالة التي تأخذ io (Socket.IO) كمدخل
 module.exports = (io) => {
+  // الاستماع لحدث الاتصال الجديد
   io.on('connection', (socket) => {
-    console.log('Socket connected:', socket.id);
+    console.log('🔌 اتصال جديد:', socket.id); // تسجيل معرف الاتصال الجديد
 
-    // Join a stream room
+    // انضمام مستخدم لغرفة بث
     socket.on('join_stream', async ({ streamId, userId }) => {
       try {
-        console.log('[DEBUG] join_stream called with:', { streamId, userId });
-        
+        console.log('[DEBUG] انضمام لغرفة البث:', { streamId, userId });
+
+        // التحقق من صحة المدخلات
         if (!streamId || !userId) {
-          const errorMsg = 'streamId and userId are required';
+          const errorMsg = 'معرف البث ومعرف المستخدم مطلوبان';
           console.log('[ERROR]', errorMsg);
           return socket.emit('error', { message: errorMsg });
         }
-        
-        // التحقق من صحة الـ ObjectId
+
+        // التحقق من صحة معرف البث (ObjectId)
         if (!mongoose.Types.ObjectId.isValid(streamId)) {
-          const errorMsg = `Invalid streamId format: ${streamId}`;
+          const errorMsg = `صيغة معرف البث غير صحيحة: ${streamId}`;
           console.log('[ERROR]', errorMsg);
           return socket.emit('error', { message: errorMsg });
         }
-        
-        // البحث عن الـ Stream
+
+        // البحث عن البث في قاعدة البيانات
         let stream;
         try {
           stream = await Stream.findById(streamId);
-          console.log('[DEBUG] Stream lookup result:', stream ? 'Found' : 'Not found');
+          console.log('[DEBUG] نتيجة البحث عن البث:', stream ? 'موجود' : 'غير موجود');
         } catch (lookupErr) {
-          console.log('[ERROR] Stream lookup failed:', lookupErr.message);
-          return socket.emit('error', { message: 'Database lookup failed: ' + lookupErr.message });
+          console.log('[ERROR] فشل البحث عن البث:', lookupErr.message);
+          return socket.emit('error', { message: 'فشل البحث في قاعدة البيانات: ' + lookupErr.message });
         }
-        
+
+        // التحقق من وجود البث
         if (!stream) {
-          const errorMsg = `Stream not found: ${streamId}`;
+          const errorMsg = `البث غير موجود: ${streamId}`;
           console.log('[ERROR]', errorMsg);
           return socket.emit('error', { message: errorMsg });
         }
-        
-        console.log('[DEBUG] Stream found:', stream._id);
-        
-        // الانضمام للغرفة
+
+        console.log('[DEBUG] تم العثور على البث:', stream._id);
+
+        // انضمام المستخدم لغرفة البث (Socket.IO Room)
         socket.join(streamId);
-        console.log('[DEBUG] Socket joined room:', streamId);
-        
-        // تحديث المشاهدين (مع تجاهل الأخطاء)
+        console.log('[DEBUG] انضم المستخدم للغرفة:', streamId);
+
+        // تحديث عدد المشاهدين في قاعدة البيانات
         try {
+          // استخدام $addToSet لتجنب التكرار
           await Stream.findByIdAndUpdate(streamId, { $addToSet: { viewers: userId } });
           const updatedStream = await Stream.findById(streamId);
+          // إرسال تحديث عدد المشاهدين لجميع المستخدمين في الغرفة
           io.to(streamId).emit('viewer_count', { count: updatedStream.viewers.length });
-          console.log('[DEBUG] Viewer count updated');
+          console.log('[DEBUG] تم تحديث عدد المشاهدين');
         } catch (dbErr) {
-          console.log('[WARN] Database update failed (continuing):', dbErr.message);
+          console.log('[WARN] فشل تحديث قاعدة البيانات (الاستمرار):', dbErr.message);
         }
 
-        // إرسال العرض للمشاهد إذا كان موجود
+        // إرسال العرض (Offer) للمشاهد إذا كان متوفر
         if (offers[streamId] && offers[streamId].offer) {
-          console.log('[DEBUG] Sending offer to viewer:', socket.id);
+          console.log('[DEBUG] إرسال العرض للمشاهد:', socket.id);
+          // إرسال العرض للمشاهد الجديد فقط
           io.to(socket.id).emit('stream_offer', offers[streamId].offer);
+          // إضافة معرف المشاهد لقائمة المشاهدين
           offers[streamId].viewers.push(socket.id);
-          console.log(`[join_stream] Sent offer to viewer: ${userId}, streamId: ${streamId}`);
+          console.log(`[join_stream] تم إرسال العرض للمشاهد: ${userId}, معرف البث: ${streamId}`);
         } else {
-          console.log(`[join_stream] No offer available for streamId: ${streamId}`);
+          console.log(`[join_stream] لا يوجد عرض متوفر لمعرف البث: ${streamId}`);
         }
-        
-        console.log(`[join_stream] User ${userId} joined stream ${streamId}`);
-        
+
+        console.log(`[join_stream] المستخدم ${userId} انضم للبث ${streamId}`);
+
       } catch (err) {
-        console.error('[ERROR] in join_stream:', err);
-        socket.emit('error', { message: 'Failed to join stream: ' + err.message });
+        console.error('[ERROR] في انضمام المستخدم للبث:', err);
+        socket.emit('error', { message: 'فشل الانضمام للبث: ' + err.message });
       }
     });
 
-    // Leave a stream room
+    // مغادرة مستخدم لغرفة بث
     socket.on('leave_stream', async ({ streamId, userId }) => {
       try {
+        // التحقق من صحة المدخلات
         if (!streamId || !userId) {
-          return socket.emit('error', { message: 'streamId and userId are required' });
+          return socket.emit('error', { message: 'معرف البث ومعرف المستخدم مطلوبان' });
         }
-        
+
+        // مغادرة الغرفة
         socket.leave(streamId);
-        // Decrement viewers in DB
+
+        // إزالة المستخدم من قائمة المشاهدين في قاعدة البيانات
         await Stream.findByIdAndUpdate(streamId, { $pull: { viewers: userId } });
-        // Broadcast new viewer count
+
+        // إرسال تحديث عدد المشاهدين
         const stream = await Stream.findById(streamId);
         io.to(streamId).emit('viewer_count', { count: stream.viewers.length });
-        
-        console.log(`[leave_stream] User ${userId} left stream ${streamId}`);
+
+        console.log(`[leave_stream] المستخدم ${userId} غادر البث ${streamId}`);
       } catch (err) {
-        console.error('Error in leave_stream:', err);
-        socket.emit('error', { message: 'Failed to leave stream' });
+        console.error('خطأ في مغادرة البث:', err);
+        socket.emit('error', { message: 'فشل مغادرة البث' });
       }
     });
 
-    // Live chat: send message
+    // إرسال رسالة دردشة مباشرة
     socket.on('send_message', async ({ streamId, userId, content, type }) => {
       try {
+        // التحقق من صحة المدخلات
         if (!streamId || !userId || !content) {
-          return socket.emit('error', { message: 'streamId, userId, and content are required' });
+          return socket.emit('error', { message: 'معرف البث ومعرف المستخدم والمحتوى مطلوبة' });
         }
-        
-        // Save message to DB
+
+        // حفظ الرسالة في قاعدة البيانات
         const message = await Message.create({
           streamId,
           userId,
           content,
-          type: type || 'text',
-          filtered: false
+          type: type || 'text', // نوع الرسالة (نص، صورة، إلخ)
+          filtered: false       // هل تم تصفية الرسالة من الكلمات السيئة؟
         });
-        // Broadcast to all in room
+
+        // إرسال الرسالة لجميع المستخدمين في الغرفة
         io.to(streamId).emit('new_message', {
           _id: message._id,
           streamId,
@@ -123,120 +142,131 @@ module.exports = (io) => {
           type: message.type,
           timestamp: message.timestamp
         });
-        
-        console.log(`[send_message] Message sent in stream ${streamId} by user ${userId}`);
+
+        console.log(`[send_message] تم إرسال رسالة في البث ${streamId} من المستخدم ${userId}`);
       } catch (err) {
-        console.error('Error in send_message:', err);
-        socket.emit('error', { message: 'Failed to send message' });
+        console.error('خطأ في إرسال الرسالة:', err);
+        socket.emit('error', { message: 'فشل إرسال الرسالة' });
       }
     });
 
-    // Stream status updates
+    // تحديث حالة البث (بدء/إيقاف)
     socket.on('stream_status', ({ streamId, status }) => {
+      // التحقق من صحة المدخلات
       if (!streamId || !status) {
-        return socket.emit('error', { message: 'streamId and status are required' });
+        return socket.emit('error', { message: 'معرف البث والحالة مطلوبة' });
       }
-      
+
+      // إرسال تحديث الحالة لجميع المستخدمين في الغرفة
       // status: 'start' | 'stop'
       io.to(streamId).emit('stream_status', { streamId, status });
-      console.log(`[stream_status] Stream ${streamId} status: ${status}`);
+      console.log(`[stream_status] حالة البث ${streamId}: ${status}`);
     });
 
-    // ----- WEBRTC SIGNALING EVENTS -----
+    // ----- أحداث إشارات WebRTC -----
 
-    // Broadcaster sends offer
+    // البثّاث يرسل عرض (Offer)
     socket.on('stream_offer', ({ streamId, sdp, type }) => {
       try {
+        // التحقق من صحة المدخلات
         if (!streamId || !sdp || !type) {
-          return socket.emit('error', { message: 'streamId, sdp, and type are required' });
+          return socket.emit('error', { message: 'معرف البث و sdp و type مطلوبة' });
         }
-        
+
+        // تخزين العرض في الذاكرة
         offers[streamId] = {
-          offer: { streamId, sdp, type },
-          broadcasterSocketId: socket.id,
-          viewers: []
+          offer: { streamId, sdp, type }, // معلومات العرض
+          broadcasterSocketId: socket.id, // معرف اتصال البثّاث
+          viewers: []                     // قائمة المشاهدين
         };
-        
-        console.log(`[stream_offer] Broadcaster SDP stored for streamId: ${streamId}`);
+
+        console.log(`[stream_offer] تم تخزين عرض البثّاث لمعرف البث: ${streamId}`);
+        // إعلام البثّاث أن العرض تم تخزينه
         socket.emit('offer-stored', { streamId });
-        offers[streamId].viewers.forEach(viewerSocketId => {
-          io.to(viewerSocketId).emit('stream_offer', offers[streamId].offer);
-          console.log([stream_offer] Sent offer to waiting viewer ${viewerSocketId});
-        });
       } catch (err) {
-        console.error('Error in stream_offer:', err);
-        socket.emit('error', { message: 'Failed to store offer' });
+        console.error('خطأ في تخزين العرض:', err);
+        socket.emit('error', { message: 'فشل تخزين العرض' });
       }
     });
 
-    // Viewer sends answer, relay to broadcaster
+    // المشاهد يرسل رد (Answer)، إعادة توجيهه للبثّاث
     socket.on('stream_answer', ({ streamId, userId, sdp, type }) => {
       try {
+        // التحقق من صحة المدخلات
         if (!streamId || !userId || !sdp || !type) {
-          return socket.emit('error', { message: 'streamId, userId, sdp, and type are required' });
+          return socket.emit('error', { message: 'معرف البث ومعرف المستخدم و sdp و type مطلوبة' });
         }
-        
+
+        // التحقق من وجود البثّاث
         if (offers[streamId] && offers[streamId].broadcasterSocketId) {
-          io.to(offers[streamId].broadcasterSocketId).emit('stream_answer', { 
-            streamId, 
-            userId, 
-            sdp, 
-            type 
+          // إعادة توجيه الرد للبثّاث
+          io.to(offers[streamId].broadcasterSocketId).emit('stream_answer', {
+            streamId,
+            userId,
+            sdp,
+            type
           });
-          console.log(`[stream_answer] Relayed answer from viewer ${userId} to broadcaster for streamId ${streamId}`);
+          console.log(`[stream_answer] تم إعادة توجيه الرد من المشاهد ${userId} للبثّاث لمعرف البث ${streamId}`);
         } else {
-          socket.emit('error', { message: 'No broadcaster found for this stream' });
+          socket.emit('error', { message: 'لا يوجد بثّاث لهذا البث' });
         }
       } catch (err) {
-        console.error('Error in stream_answer:', err);
-        socket.emit('error', { message: 'Failed to relay answer' });
+        console.error('خطأ في إعادة توجيه الرد:', err);
+        socket.emit('error', { message: 'فشل إعادة توجيه الرد' });
       }
     });
 
-    // ICE candidates exchange
+    // تبادل بيانات الاتصال (ICE candidates)
     socket.on('ice_candidate', ({ streamId, userId, candidate }) => {
       try {
+        // التحقق من صحة المدخلات
         if (!streamId || !userId || !candidate) {
-          return socket.emit('error', { message: 'streamId, userId, and candidate are required' });
+          return socket.emit('error', { message: 'معرف البث ومعرف المستخدم و candidate مطلوبة' });
         }
-        
+
+        // التحقق من وجود العرض
         if (!offers[streamId]) {
-          return socket.emit('error', { message: 'No stream offer found' });
+          return socket.emit('error', { message: 'لا يوجد عرض للبث' });
         }
-        
+
+        // تحديد مصدر بيانات الاتصال
         if (socket.id === offers[streamId].broadcasterSocketId) {
-          // Broadcaster's ICE → all viewers
+          // بيانات الاتصال من البثّاث → جميع المشاهدين
           offers[streamId].viewers.forEach(viewerSocketId => {
             io.to(viewerSocketId).emit('ice_candidate', { streamId, userId, candidate });
           });
-          console.log(`[ice_candidate] Broadcaster ICE relayed to ${offers[streamId].viewers.length} viewers`);
+          console.log(`[ice_candidate] بيانات الاتصال من البثّاث أُرسلت لـ ${offers[streamId].viewers.length} مشاهدين`);
         } else {
-          // Viewer's ICE → broadcaster
+          // بيانات الاتصال من المشاهد → البثّاث
           io.to(offers[streamId].broadcasterSocketId).emit('ice_candidate', { streamId, userId, candidate });
-          console.log(`[ice_candidate] Viewer ${userId} ICE relayed to broadcaster`);
+          console.log(`[ice_candidate] بيانات الاتصال من المشاهد ${userId} أُرسلت للبثّاث`);
         }
       } catch (err) {
-        console.error('Error in ice_candidate:', err);
-        socket.emit('error', { message: 'Failed to relay ICE candidate' });
+        console.error('خطأ في تبادل بيانات الاتصال:', err);
+        socket.emit('error', { message: 'فشل تبادل بيانات الاتصال' });
       }
     });
 
-    // Cleanup on disconnect
+    // تنظيف عند قطع الاتصال
     socket.on('disconnect', () => {
-      console.log('Socket disconnected:', socket.id);
-      
-      // Remove socket from offers viewers
+      console.log('🔌 انقطع الاتصال:', socket.id);
+
+      // إزالة معرف الاتصال من قائمة المشاهدين
       Object.keys(offers).forEach(streamId => {
-        if (offers[streamId].viewers.includes(socket.id)) {
-          offers[streamId].viewers = offers[streamId].viewers.filter(sid => sid !== socket.id);
-          console.log(`[disconnect] Removed viewer from stream ${streamId}`);
+        const streamOffer = offers[streamId];
+
+        // إزالة المشاهد من القائمة
+        if (streamOffer.viewers.includes(socket.id)) {
+          streamOffer.viewers = streamOffer.viewers.filter(sid => sid !== socket.id);
+          console.log(`[disconnect] تم إزالة المشاهد من البث ${streamId}`);
         }
-        
-        // Remove offer if broadcaster disconnects
-        if (offers[streamId].broadcasterSocketId === socket.id) {
+
+        // إذا كان البثّاث منقطع الاتصال، إزالة العرض بالكامل
+        if (streamOffer.broadcasterSocketId === socket.id) {
           delete offers[streamId];
+          // إعلام جميع المستخدمين في الغرفة أن البثّاث انقطع
           io.to(streamId).emit('broadcaster_disconnected', { streamId });
-          console.log(`[disconnect] Broadcaster disconnected, removed offer for stream ${streamId}`);
+          console.log(`[disconnect] البثّاث انقطع الاتصال، تم إزالة العرض للبث ${streamId}`);
         }
       });
     });
