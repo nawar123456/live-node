@@ -5,7 +5,8 @@ const mongoose = require('mongoose');
 const socketio = require('socket.io')(server, {
   pingInterval: 25000, // send ping every 25s
   pingTimeout: 60000   // wait up to 60s before killingconst express = require('express'); // ← إضافة Express
-const path = require('path');       // ← إضافة Path
+});
+  const path = require('path');       // ← إضافة Path
 
 // إنشاء تطبيق Express
 const app = require('./app');
