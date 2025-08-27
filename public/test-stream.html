@@ -71,7 +71,7 @@
         </div>
         
         <div id="videoContainer">
-            <video id="remoteVideo" autoplay playsinline muted controls ></video>
+            <video id="remoteVideo" autoplay playsinline muted ></video>
         </div>
         
         <div id="status">Ready to test stream... Enter Stream ID and click Start Viewing</div>
@@ -141,7 +141,7 @@
                 // Setup peer connection
                 peerConnection = new RTCPeerConnection(config);
                 setupGlobalTrackListener();
-                peerConnection.ontrack = (event) => {
+                /* peerConnection.ontrack = (event) => {
                     console.log('🎥 Track received:', event.track.kind);
                     const videoElement = document.getElementById('remoteVideo');
                     if (videoElement) {
@@ -162,7 +162,39 @@
                     }
                     document.getElementById('remoteVideo').srcObject = event.streams[0];
                     updateStatus('🎉 Stream received! Video should appear now', 'success');
-                };
+                }; */
+
+                peerConnection.ontrack = (event) => {
+                console.log('🎥 Track received:', event.track.kind);
+            
+                const videoElement = document.getElementById('remoteVideo');
+                if (!videoElement.srcObject) {
+                    videoElement.srcObject = event.streams[0];
+                }
+            
+                // Ensure autoplay works
+                videoElement.muted = true;
+                videoElement.autoplay = true;
+                videoElement.playsInline = true;
+            
+                // Try to play
+                const playPromise = videoElement.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.warn('⚠️ Autoplay blocked:', error.name);
+                        updateStatus('🎥 Stream loaded! Click video to start playback.', 'success');
+                    });
+                }
+            
+                // Allow user to unmute on click
+                videoElement.addEventListener('click', () => {
+                    videoElement.muted = false;
+                    videoElement.play();
+                }, { once: true });
+            
+                updateStatus('🎉 Stream received! Waiting for video to play...', 'success');
+            };
+
 
                 peerConnection.onicecandidate = (event) => {
                     if (event.candidate && socket.connected) {
