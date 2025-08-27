@@ -164,7 +164,7 @@
                     try {
                         socket.emit('join_stream', {
                             streamId: streamId,
-                            userId: 'web_tester_' + Date.now() // ✅ تم تغيير معرف المستخدم ليكون فريدًا
+                            userId: '507f1f77bcf86cd799439011' // ✅ تم تغيير معرف المستخدم ليكون فريدًا
                         });
                         updateStatus('📋 Joining stream...', 'info');
                     } catch (emitErr) {
@@ -254,7 +254,7 @@
                         try {
                             socket.emit('ice_candidate', {
                                 streamId: streamId,
-                                userId: 'web_tester',
+                                userId: '507f1f77bcf86cd799439011',
                                 candidate: event.candidate
                             });
                         } catch (err) {
@@ -316,7 +316,7 @@
                 
                 socket.emit('stream_answer', {
                     streamId: offerData.streamId,
-                    userId: 'web_tester',
+                    userId: '507f1f77bcf86cd799439011',
                     sdp: answer.sdp,
                     type: 'answer'
                 });
