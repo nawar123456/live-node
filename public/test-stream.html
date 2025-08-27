@@ -232,6 +232,36 @@
         window.addEventListener('beforeunload', () => {
             stopViewing();
         });
+        // إضافة مستمع عالمي لحدث ontrack
+function setupGlobalTrackListener() {
+    if (peerConnection) {
+        peerConnection.addEventListener('track', (event) => {
+            console.log('🎯 GLOBAL ONTRACK FIRED!');
+            console.log('Track kind:', event.track.kind);
+            
+            const video = document.getElementById('remoteVideo');
+            if (video && event.streams[0]) {
+                video.srcObject = event.streams[0];
+                video.muted = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                
+                // محاولة تشغيل الفيديو
+                setTimeout(() => {
+                    const playPromise = video.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(() => {
+                            // تجاهل الأخطاء
+                        });
+                    }
+                }, 100);
+            }
+        });
+    }
+}
+
+// استدعاء الدالة بعد إنشاء peerConnection
+// (أضف سطر: setupGlobalTrackListener(); بعد إنشاء peerConnection)
     </script>
 </body>
 </html>
