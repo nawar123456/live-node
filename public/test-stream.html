@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>WebRTC Stream Tester - Local</title>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js  "></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -104,7 +104,7 @@
 
             try {
                 // Connect using Socket.IO
-                socket = io('https://live-node.onrender.com  ');
+                socket = io('https://live-node.onrender.com');
                 
                 socket.on('connect', () => {
                     updateStatus('✅ Connected to Socket.IO server');
@@ -135,7 +135,7 @@
                 });
 
                 socket.on('disconnect', (reason) => {
-                    console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
+                    updateStatus('🔌 Disconnected: ' + reason);
                 });
 
                 // Setup peer connection
