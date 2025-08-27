@@ -1,18 +1,19 @@
+// server.js
 require('dotenv').config(); // ← مهم إذا كنت تستخدم .env محليًا
 
 const http = require('http');
 const mongoose = require('mongoose');
-const app = require('./app');
-app.use(express.json()); // ← هذا هو الحل!
-const server = http.createServer(app);
-const socketio = require('socket.io')(server, {
-  pingInterval: 25000, // send ping every 25s
-  pingTimeout: 60000   // wait up to 60s before killingconst express = require('express'); // ← إضافة Express
-});
-  const path = require('path');       // ← إضافة Path
+const express = require('express'); // ← إضافة Express
+const path = require('path');       // ← إضافة Path
 
 // إنشاء تطبيق Express
+const app = require('./app'); // تأكد من أن app.js لا ينشئ تطبيق express آخر إذا استخدمت هذا السطر
 
+// أو إذا لم يكن لديك ملف app.js منفصل، استخدم هذا:
+// const app = express();
+
+// ✅ أضف هذا السطر المهم لقراءة JSON من الطلبات:
+app.use(express.json()); // ← هذا هو الحل!
 
 // إضافة خدمة الملفات الثابتة للـ HTML
 app.use(express.static(path.join(__dirname, 'public')));
@@ -35,7 +36,16 @@ mongoose.connect(MONGODB_URI)
     process.exit(1);
   });
 
-const io = socketio(server, { cors: { origin: '*' } });
+const server = http.createServer(app);
+
+// إنشاء Socket.IO server مع إعدادات صحيحة
+const io = require('socket.io')(server, {
+  cors: { origin: '*' },
+  pingInterval: 25000, // إرسال ping كل 25 ثانية
+  pingTimeout: 60000   // انتظار حتى 60 ثانية قبل قطع الاتصال
+});
+
+// تمرير io إلى ملف socket.js
 require('./socket')(io);
 
 io.on('connection', (socket) => {
