@@ -2,6 +2,8 @@ require('dotenv').config(); // ← مهم إذا كنت تستخدم .env محل
 
 const http = require('http');
 const mongoose = require('mongoose');
+const app = require('./app');
+app.use(express.json()); // ← هذا هو الحل!
 const server = http.createServer(app);
 const socketio = require('socket.io')(server, {
   pingInterval: 25000, // send ping every 25s
@@ -10,8 +12,7 @@ const socketio = require('socket.io')(server, {
   const path = require('path');       // ← إضافة Path
 
 // إنشاء تطبيق Express
-const app = require('./app');
-app.use(express.json()); // ← هذا هو الحل!
+
 
 // إضافة خدمة الملفات الثابتة للـ HTML
 app.use(express.static(path.join(__dirname, 'public')));
