@@ -248,8 +248,8 @@ module.exports = (io) => {
     });
 
     // تنظيف عند قطع الاتصال
-    socket.on('disconnect', () => {
-      console.log('🔌 انقطع الاتصال:', socket.id);
+    socket.on('disconnect', (reason) => {
+      console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
 
       // إزالة معرف الاتصال من قائمة المشاهدين
       Object.keys(offers).forEach(streamId => {
