@@ -2,6 +2,7 @@ require('dotenv').config(); // ← مهم إذا كنت تستخدم .env محل
 
 const http = require('http');
 const mongoose = require('mongoose');
+const server = http.createServer(app);
 const socketio = require('socket.io')(server, {
   pingInterval: 25000, // send ping every 25s
   pingTimeout: 60000   // wait up to 60s before killingconst express = require('express'); // ← إضافة Express
@@ -33,7 +34,6 @@ mongoose.connect(MONGODB_URI)
     process.exit(1);
   });
 
-const server = http.createServer(app);
 const io = socketio(server, { cors: { origin: '*' } });
 require('./socket')(io);
 
