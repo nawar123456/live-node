@@ -159,6 +159,10 @@ module.exports = (io) => {
         
         console.log(`[stream_offer] Broadcaster SDP stored for streamId: ${streamId}`);
         socket.emit('offer-stored', { streamId });
+        offers[streamId].viewers.forEach(viewerSocketId => {
+          io.to(viewerSocketId).emit('stream_offer', offers[streamId].offer);
+          console.log([stream_offer] Sent offer to waiting viewer ${viewerSocketId});
+        });
       } catch (err) {
         console.error('Error in stream_offer:', err);
         socket.emit('error', { message: 'Failed to store offer' });
