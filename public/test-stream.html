@@ -140,7 +140,7 @@
 
                 // Setup peer connection
                 peerConnection = new RTCPeerConnection(config);
-                
+                setupGlobalTrackListener();
                 peerConnection.ontrack = (event) => {
                     console.log('🎥 Track received:', event.track.kind);
                     const videoElement = document.getElementById('remoteVideo');
