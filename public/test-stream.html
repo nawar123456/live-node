@@ -143,6 +143,23 @@
                 
                 peerConnection.ontrack = (event) => {
                     console.log('🎥 Track received:', event.track.kind);
+                    const videoElement = document.getElementById('remoteVideo');
+                    if (videoElement) {
+                        videoElement.srcObject = event.streams[0];
+                        videoElement.muted = true; // autoplay allowed
+                        const playPromise = videoElement.play();
+                        if (playPromise !== undefined) {
+                            playPromise.catch(error => {
+                                console.error('Autoplay blocked:', error.name);
+                            });
+                        }
+                
+                        // allow user click to unmute
+                        videoElement.addEventListener('click', () => {
+                            videoElement.muted = false;
+                            videoElement.play();
+                        }, { once: true });
+                    }
                     document.getElementById('remoteVideo').srcObject = event.streams[0];
                     updateStatus('🎉 Stream received! Video should appear now', 'success');
                 };
@@ -250,11 +267,11 @@ function setupGlobalTrackListener() {
                 setTimeout(() => {
                     const playPromise = video.play();
                     if (playPromise !== undefined) {
-                        playPromise.catch(() => {
-                            // تجاهل الأخطاء
+                        playPromise.catch((error) => {
+                            console.error('Tadaaa: ' + error);
                         });
                     }
-                }, 100);
+                }, 1000);
             }
         });
     }
