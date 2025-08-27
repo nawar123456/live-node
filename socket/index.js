@@ -4,7 +4,7 @@
 const Message = require('../models/Message'); // نموذج الرسائل
 const Stream = require('../models/Stream');   // نموذج البث
 const User = require('../models/User');       // نموذج المستخدم
-const mongoose = require('mongoose');         // مكتبة للتعامل مع MongoDB
+const mongoose = require('mongoose');         //   hمكتبة للتعامل مع MongoDB
 
 // تخزين العروض (Offers) والمشاهدين في الذاكرة (للاستخدام التجريبي، استخدم Redis/DB للإنتاج)
 // هذا الكائن يخزن معلومات الاتصال المؤقتة ل WebRTC
