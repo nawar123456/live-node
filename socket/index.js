@@ -8,7 +8,7 @@ const mongoose = require('mongoose');         // مكتبة للتعامل مع 
 
 // تخزين العروض (Offers) والمشاهدين في الذاكرة (للاستخدام التجريبي، استخدم Redis/DB للإنتاج)
 // هذا الكائن يخزن معلومات الاتصال المؤقتة ل WebRTC
-// الصيغة: { streamId: { offer, broadcasterSocketId, viewers: [] } }
+// الصيغة: { streamId: { offer, broadcasterSocketId, viewers: [], waitingViewers: [] } }
 const offers = {};
 
 // تصدير الدالة التي تأخذ io (Socket.IO) كمدخل
@@ -71,16 +71,34 @@ module.exports = (io) => {
           console.log('[WARN] فشل تحديث قاعدة البيانات (الاستمرار):', dbErr.message);
         }
 
+        // تهيئة الكائن في الذاكرة إذا لم يكن موجوداً
+        if (!offers[streamId]) {
+          offers[streamId] = {
+            offer: null,
+            broadcasterSocketId: null,
+            viewers: [],
+            waitingViewers: [] // قائمة المشاهدين في وضع الانتظار
+          };
+        }
+
         // إرسال العرض (Offer) للمشاهد إذا كان متوفر
-        if (offers[streamId] && offers[streamId].offer) {
+        if (offers[streamId].offer) {
           console.log('[DEBUG] إرسال العرض للمشاهد:', socket.id);
           // إرسال العرض للمشاهد الجديد فقط
           io.to(socket.id).emit('stream_offer', offers[streamId].offer);
-          // إضافة معرف المشاهد لقائمة المشاهدين
+          // إضافة معرف المشاهد لقائمة المشاهدين النشطين
           offers[streamId].viewers.push(socket.id);
           console.log(`[join_stream] تم إرسال العرض للمشاهد: ${userId}, معرف البث: ${streamId}`);
         } else {
-          console.log(`[join_stream] لا يوجد عرض متوفر لمعرف البث: ${streamId}`);
+          // إذا ما فيش عرض، نضيف المشاهد لقائمة الانتظار
+          console.log(`[join_stream] لا يوجد عرض متوفر لمعرف البث: ${streamId}, إضافة المشاهد لقائمة الانتظار`);
+          offers[streamId].waitingViewers.push(socket.id);
+          
+          // إرسال رسالة انتظار للمشاهد
+          socket.emit('waiting_for_broadcaster', {
+            message: '⏳ جاري الانتظار حتى يبدأ البث...',
+            streamId: streamId
+          });
         }
 
         console.log(`[join_stream] المستخدم ${userId} انضم للبث ${streamId}`);
@@ -108,6 +126,14 @@ module.exports = (io) => {
         // إرسال تحديث عدد المشاهدين
         const stream = await Stream.findById(streamId);
         io.to(streamId).emit('viewer_count', { count: stream.viewers.length });
+
+        // إزالة المستخدم من قوائم المشاهدين في الذاكرة
+        if (offers[streamId]) {
+          // إزالة من المشاهدين النشطين
+          offers[streamId].viewers = offers[streamId].viewers.filter(id => id !== socket.id);
+          // إزالة من قائمة الانتظار
+          offers[streamId].waitingViewers = offers[streamId].waitingViewers.filter(id => id !== socket.id);
+        }
 
         console.log(`[leave_stream] المستخدم ${userId} غادر البث ${streamId}`);
       } catch (err) {
@@ -173,16 +199,53 @@ module.exports = (io) => {
           return socket.emit('error', { message: 'معرف البث و sdp و type مطلوبة' });
         }
 
+        // تهيئة الكائن في الذاكرة إذا لم يكن موجوداً
+        if (!offers[streamId]) {
+          offers[streamId] = {
+            offer: null,
+            broadcasterSocketId: null,
+            viewers: [],
+            waitingViewers: []
+          };
+        }
+
         // تخزين العرض في الذاكرة
-        offers[streamId] = {
-          offer: { streamId, sdp, type }, // معلومات العرض
-          broadcasterSocketId: socket.id, // معرف اتصال البثّاث
-          viewers: []                     // قائمة المشاهدين
-        };
+        offers[streamId].offer = { streamId, sdp, type }; // معلومات العرض
+        offers[streamId].broadcasterSocketId = socket.id; // معرف اتصال البثّاث
 
         console.log(`[stream_offer] تم تخزين عرض البثّاث لمعرف البث: ${streamId}`);
+        
         // إعلام البثّاث أن العرض تم تخزينه
         socket.emit('offer-stored', { streamId });
+        
+        // إرسال العرض لجميع المشاهدين في وضع الانتظار
+        offers[streamId].waitingViewers.forEach(viewerSocketId => {
+          // التأكد أن الاتصال لا يزال موجوداً
+          const viewerSocket = io.sockets.sockets.get(viewerSocketId);
+          if (viewerSocket) {
+            io.to(viewerSocketId).emit('stream_offer', offers[streamId].offer);
+            // نقل المشاهد من قائمة الانتظار لقائمة المشاهدين النشطين
+            offers[streamId].viewers.push(viewerSocketId);
+            console.log(`[stream_offer] تم إرسال العرض للمشاهد في وضع الانتظار: ${viewerSocketId}`);
+          }
+        });
+        
+        // تنظيف قائمة الانتظار بعد الإرسال
+        offers[streamId].waitingViewers = [];
+        
+        // إرسال العرض أيضاً لجميع المشاهدين الحاليين
+        // (في حالة كان هناك مشاهدون انضموا بعد بدء البث)
+        offers[streamId].viewers.forEach(viewerSocketId => {
+          // تجنب إرسال العرض للمشاهد نفسه إذا كان موجوداً بالفعل
+          if (viewerSocketId !== socket.id) {
+            const viewerSocket = io.sockets.sockets.get(viewerSocketId);
+            if (viewerSocket) {
+              io.to(viewerSocketId).emit('stream_offer', offers[streamId].offer);
+              console.log(`[stream_offer] تم إرسال العرض للمشاهد الحالي: ${viewerSocketId}`);
+            }
+          }
+        });
+
       } catch (err) {
         console.error('خطأ في تخزين العرض:', err);
         socket.emit('error', { message: 'فشل تخزين العرض' });
@@ -233,13 +296,21 @@ module.exports = (io) => {
         if (socket.id === offers[streamId].broadcasterSocketId) {
           // بيانات الاتصال من البثّاث → جميع المشاهدين
           offers[streamId].viewers.forEach(viewerSocketId => {
-            io.to(viewerSocketId).emit('ice_candidate', { streamId, userId, candidate });
+            // التأكد أن الاتصال لا يزال موجوداً
+            const viewerSocket = io.sockets.sockets.get(viewerSocketId);
+            if (viewerSocket) {
+              io.to(viewerSocketId).emit('ice_candidate', { streamId, userId, candidate });
+            }
           });
           console.log(`[ice_candidate] بيانات الاتصال من البثّاث أُرسلت لـ ${offers[streamId].viewers.length} مشاهدين`);
         } else {
           // بيانات الاتصال من المشاهد → البثّاث
-          io.to(offers[streamId].broadcasterSocketId).emit('ice_candidate', { streamId, userId, candidate });
-          console.log(`[ice_candidate] بيانات الاتصال من المشاهد ${userId} أُرسلت للبثّاث`);
+          // التأكد أن اتصال البثّاث لا يزال موجوداً
+          const broadcasterSocket = io.sockets.sockets.get(offers[streamId].broadcasterSocketId);
+          if (broadcasterSocket) {
+            io.to(offers[streamId].broadcasterSocketId).emit('ice_candidate', { streamId, userId, candidate });
+            console.log(`[ice_candidate] بيانات الاتصال من المشاهد ${userId} أُرسلت للبثّاث`);
+          }
         }
       } catch (err) {
         console.error('خطأ في تبادل بيانات الاتصال:', err);
@@ -251,15 +322,15 @@ module.exports = (io) => {
     socket.on('disconnect', (reason) => {
       console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
 
-      // إزالة معرف الاتصال من قائمة المشاهدين
+      // إزالة معرف الاتصال من جميع القوائم
       Object.keys(offers).forEach(streamId => {
         const streamOffer = offers[streamId];
 
-        // إزالة المشاهد من القائمة
-        if (streamOffer.viewers.includes(socket.id)) {
-          streamOffer.viewers = streamOffer.viewers.filter(sid => sid !== socket.id);
-          console.log(`[disconnect] تم إزالة المشاهد من البث ${streamId}`);
-        }
+        // إزالة من قائمة المشاهدين النشطين
+        streamOffer.viewers = streamOffer.viewers.filter(id => id !== socket.id);
+        
+        // إزالة من قائمة المشاهدين في وضع الانتظار
+        streamOffer.waitingViewers = streamOffer.waitingViewers.filter(id => id !== socket.id);
 
         // إذا كان البثّاث منقطع الاتصال، إزالة العرض بالكامل
         if (streamOffer.broadcasterSocketId === socket.id) {
