@@ -151,7 +151,7 @@
                     if (event.candidate && socket.connected) {
                         socket.emit('ice_candidate', {
                             streamId: streamId,
-                            userId: 'web_tester',
+                            userId: '507f1f77bcf86cd799439011',
                             candidate: event.candidate
                         });
                     }
@@ -191,7 +191,7 @@
                 
                 socket.emit('stream_answer', {
                     streamId: offerData.streamId,
-                    userId: 'web_tester',
+                    userId: '507f1f77bcf86cd799439011',
                     sdp: answer.sdp,
                     type: 'answer'
                 });
