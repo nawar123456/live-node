@@ -135,7 +135,7 @@
                 });
 
                 socket.on('disconnect', (reason) => {
-                    updateStatus('🔌 Disconnected: ' + reason);
+                    console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
                 });
 
                 // Setup peer connection
