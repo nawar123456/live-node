@@ -140,60 +140,62 @@
 
                 // Setup peer connection
                 peerConnection = new RTCPeerConnection(config);
-                setupGlobalTrackListener();
-                /* peerConnection.ontrack = (event) => {
-                    console.log('🎥 Track received:', event.track.kind);
-                    const videoElement = document.getElementById('remoteVideo');
-                    if (videoElement) {
-                        videoElement.srcObject = event.streams[0];
-                        videoElement.muted = true; // autoplay allowed
-                        const playPromise = videoElement.play();
-                        if (playPromise !== undefined) {
-                            playPromise.catch(error => {
-                                console.error('Autoplay blocked:', error.name);
-                            });
-                        }
-                
-                        // allow user click to unmute
-                        videoElement.addEventListener('click', () => {
-                            videoElement.muted = false;
-                            videoElement.play();
-                        }, { once: true });
-                    }
-                    document.getElementById('remoteVideo').srcObject = event.streams[0];
-                    updateStatus('🎉 Stream received! Video should appear now', 'success');
-                }; */
+                // setupGlobalTrackListener();
+
+            //     peerConnection.ontrack = (event) => {
+            //     console.log('🎥 Track received:', event.track.kind);
+            
+            //     const videoElement = document.getElementById('remoteVideo');
+            //     if (!videoElement.srcObject) {
+            //         videoElement.srcObject = event.streams[0];
+            //     }
+            
+            //     // Ensure autoplay works
+            //     videoElement.muted = true;
+            //     videoElement.autoplay = true;
+            //     videoElement.playsInline = true;
+            
+            //     // Try to play
+            //     const playPromise = videoElement.play();
+            //     if (playPromise !== undefined) {
+            //         playPromise.catch(error => {
+            //             console.warn('⚠️ Autoplay blocked:', error.name);
+            //             updateStatus('🎥 Stream loaded! Click video to start playback.', 'success');
+            //         });
+            //     }
+            
+            //     // Allow user to unmute on click
+            //     videoElement.addEventListener('click', () => {
+            //         videoElement.muted = false;
+            //         videoElement.play();
+            //     }, { once: true });
+            
+            //     updateStatus('🎉 Stream received! Waiting for video to play...', 'success');
+            // };
 
                 peerConnection.ontrack = (event) => {
-                console.log('🎥 Track received:', event.track.kind);
-            
-                const videoElement = document.getElementById('remoteVideo');
-                if (!videoElement.srcObject) {
-                    videoElement.srcObject = event.streams[0];
-                }
-            
-                // Ensure autoplay works
-                videoElement.muted = true;
-                videoElement.autoplay = true;
-                videoElement.playsInline = true;
-            
-                // Try to play
-                const playPromise = videoElement.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(error => {
-                        console.warn('⚠️ Autoplay blocked:', error.name);
-                        updateStatus('🎥 Stream loaded! Click video to start playback.', 'success');
-                    });
-                }
-            
-                // Allow user to unmute on click
-                videoElement.addEventListener('click', () => {
-                    videoElement.muted = false;
-                    videoElement.play();
-                }, { once: true });
-            
-                updateStatus('🎉 Stream received! Waiting for video to play...', 'success');
-            };
+                    console.log('🎥 Track received:', event.track.kind);
+                    const videoElement = document.getElementById('remoteVideo');
+                
+                    if (videoElement && event.streams && event.streams[0]) {
+                        videoElement.srcObject = event.streams[0];
+                        videoElement.muted = true; // Mute to allow autoplay
+                        videoElement.playsInline = true;
+                
+                        // Try to play (may fail without user interaction)
+                        videoElement.play().catch(error => {
+                            console.warn('Autoplay blocked. User interaction required:', error);
+                            updateStatus('🎥 Stream loaded! Click the video to start playback.', 'success');
+                
+                            // Add click-to-play functionality
+                            videoElement.onclick = () => {
+                                videoElement.muted = false;
+                                videoElement.play().catch(e => console.error('Play failed:', e));
+                                videoElement.onclick = null; // Remove after first click
+                            };
+                        });
+                    }
+                };
 
 
                 peerConnection.onicecandidate = (event) => {
