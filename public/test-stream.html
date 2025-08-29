@@ -71,7 +71,7 @@
         </div>
         
         <div id="videoContainer">
-            <video id="remoteVideo" autoplay playsinline muted ></video>
+            <video id="remoteVideo" preload="none" autoplay playsinline muted ></video>
         </div>
         
         <div id="status">Ready to test stream... Enter Stream ID and click Start Viewing</div>
@@ -183,17 +183,22 @@
                         videoElement.playsInline = true;
                 
                         // Try to play (may fail without user interaction)
-                        videoElement.play().catch(error => {
-                            console.warn('Autoplay blocked. User interaction required:', error);
-                            updateStatus('🎥 Stream loaded! Click the video to start playback.', 'success');
-                
-                            // Add click-to-play functionality
-                            videoElement.onclick = () => {
-                                videoElement.muted = false;
-                                videoElement.play().catch(e => console.error('Play failed:', e));
-                                videoElement.onclick = null; // Remove after first click
-                            };
-                        });
+                        var playPromise = videoElement.play();
+                        if(playPromise !== undefined) {
+                            playPromise.then(_ => {
+                                updateStatus('🎥 Stream loaded! Click the video to start playback.', 'success');
+                            }).catch(error => {
+                                console.warn('Autoplay blocked. User interaction required:', error);
+                    
+                                // Add click-to-play functionality
+                                videoElement.onclick = () => {
+                                    console.log('Press Detected!');
+                                    videoElement.muted = false;
+                                    videoElement.play().catch(e => console.error('Play failed:', e));
+                                    videoElement.onclick = null; // Remove after first click
+                                };
+                            });
+                        }
                     }
                 };
 
