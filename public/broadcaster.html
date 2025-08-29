@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎥 Broadcaster - WebRTC Live Stream</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            direction: rtl;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .controls {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input, select {
+            padding: 12px;
+            margin: 5px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-size: 16px;
+            width: 300px;
+        }
+        input::placeholder {
+            color: rgba(255,255,255,0.7);
+        }
+        button {
+            padding: 15px 30px;
+            margin: 10px;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .stop-btn {
+            background: linear-gradient(45deg, #f44336, #da190b);
+        }
+        .preview-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 30px 0;
+        }
+        .video-preview {
+            position: relative;
+        }
+        video {
+            width: 600px;
+            height: 400px;
+            background: black;
+            border-radius: 10px;
+            border: 3px solid rgba(255,255,255,0.3);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: bold;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(5px);
+        }
+        .info-card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .connection-status {
+            display: inline-block;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .connected {
+            background: #4CAF50;
+        }
+        .disconnected {
+            background: #f44336;
+        }
+        .connecting {
+            background: #ff9800;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 بث مباشر عبر WebRTC</h1>
+        
+        <div class="info-card">
+            <p>ابدأ البث المباشر من كاميرا جهازك وشاهده من أي مكان في العالم</p>
+        </div>
+
+        <div class="controls">
+            <div class="input-group">
+                <label>معرف البث (Stream ID):</label>
+                <input type="text" id="streamId" placeholder="أدخل معرف البث" value="68acd42547c3ba663616d621">
+            </div>
+            
+            <div class="input-group">
+                <label>عنوان البث:</label>
+                <input type="text" id="streamTitle" placeholder="أدخل عنوان البث" value="بث تجريبي مباشر">
+            </div>
+            
+            <div class="input-group">
+                <label>نوع البث:</label>
+                <select id="streamType">
+                    <option value="Game">لعبة</option>
+                    <option value="Music">موسيقى</option>
+                    <option value="Review">مراجعة</option>
+                    <option value="Talk">حديث</option>
+                    <option value="Other">أخرى</option>
+                </select>
+            </div>
+            
+            <button id="startBtn" onclick="startBroadcast()">
+                🎬 بدء البث
+            </button>
+            <button id="stopBtn" onclick="stopBroadcast()" class="stop-btn" disabled>
+                ⏹️ إيقاف البث
+            </button>
+        </div>
+
+        <div id="previewSection" class="preview-container hidden">
+            <div class="video-preview">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <div class="status">معاينة الكاميرا</div>
+            </div>
+        </div>
+
+        <div id="status" class="status">
+            جاهز لبدء البث... أدخل معلومات البث واضغط "بدء البث"
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div>حالة الاتصال</div>
+                <div id="connectionStatus" class="connection-status disconnected">
+                    غير متصل
+                </div>
+            </div>
+            <div class="stat-card">
+                <div>عدد المشاهدين</div>
+                <div id="viewerCount" class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div>حالة البث</div>
+                <div id="broadcastStatus" class="stat-value">غير نشط</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let peerConnection;
+        let socket;
+        let localStream;
+        let isBroadcasting = false;
+
+        const config = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        function updateStatus(message, type = '') {
+            const statusElement = document.getElementById('status');
+            statusElement.innerHTML = `📋 ${message}`;
+            statusElement.className = `status ${type}`;
+            console.log('[BROADCASTER]', message);
+        }
+
+        function updateConnectionStatus(status) {
+            const statusElement = document.getElementById('connectionStatus');
+            statusElement.textContent = status;
+            statusElement.className = `connection-status ${status === 'متصل' ? 'connected' : 
+                                         status === 'جاري الاتصال' ? 'connecting' : 'disconnected'}`;
+        }
+
+        function updateViewerCount(count) {
+            document.getElementById('viewerCount').textContent = count;
+        }
+
+        function updateBroadcastStatus(status) {
+            document.getElementById('broadcastStatus').textContent = status;
+        }
+
+        function updateButtonState(starting, stopping) {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            if (starting) {
+                startBtn.disabled = true;
+                startBtn.innerHTML = '🔄 جاري البدء...';
+                stopBtn.disabled = true;
+            } else if (stopping) {
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+                stopBtn.innerHTML = '🔄 جاري الإيقاف...';
+            } else {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '🎬 بدء البث';
+                stopBtn.disabled = false;
+                stopBtn.innerHTML = '⏹️ إيقاف البث';
+            }
+        }
+
+        async function startBroadcast() {
+            if (isBroadcasting) return;
+
+            const streamId = document.getElementById('streamId').value.trim();
+            const streamTitle = document.getElementById('streamTitle').value.trim();
+            const streamType = document.getElementById('streamType').value;
+
+            if (!streamId) {
+                updateStatus('الرجاء إدخال معرف البث', 'error');
+                return;
+            }
+
+            isBroadcasting = true;
+            updateButtonState(true, false);
+            updateStatus('🔄 جاري بدء البث...', 'info');
+
+            try {
+                // 1. طلب الوصول إلى الكاميرا والمايكروفون
+                console.log('🔍 جاري الوصول إلى الكاميرا والمايكروفون...');
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    }, 
+                    audio: true 
+                });
+                console.log('✅ تم الوصول إلى الكاميرا والمايكروفون');
+
+                // 2. إظهار معاينة الكاميرا
+                const localVideo = document.getElementById('localVideo');
+                localVideo.srcObject = localStream;
+                localVideo.muted = true;
+                
+                document.getElementById('previewSection').classList.remove('hidden');
+                updateStatus('✅ الكاميرا جاهزة، جاري الاتصال بالسيرفر...', 'success');
+
+                // 3. الاتصال بالسيرفر
+                socket = io('https://live-node.onrender.com', {
+                    transports: ['websocket', 'polling'],
+                    timeout: 10000,
+                    reconnection: true,
+                    reconnectionAttempts: 5
+                });
+
+                socket.on('connect', () => {
+                    console.log('✅ متصل بالسيرفر');
+                    updateConnectionStatus('متصل');
+                    updateStatus('✅ متصل بالسيرفر، جاري بدء البث...', 'success');
+                    
+                    // إنشاء البث في قاعدة البيانات (اختياري)
+                    // يمكنك إضافة طلب HTTP لإنشاء البث
+                    
+                    // 4. إنشاء اتصال WebRTC
+                    setupPeerConnection();
+                });
+
+                socket.on('connect_error', (error) => {
+                    console.error('❌ خطأ في الاتصال بالسيرفر:', error);
+                    updateStatus(`❌ خطأ في الاتصال: ${error.message}`, 'error');
+                    updateConnectionStatus('خطأ في الاتصال');
+                    updateButtonState(false, false);
+                    isBroadcasting = false;
+                });
+
+                socket.on('disconnect', (reason) => {
+                    console.log('🔌 انقطع الاتصال بالسيرفر:', reason);
+                    updateStatus(`🔌 انقطع الاتصال: ${reason}`, 'warning');
+                    updateConnectionStatus('غير متصل');
+                });
+
+                // 5. استقبال الرد (Answer) من المشاهدين
+                socket.on('stream_answer', async (answerData) => {
+                    console.log('📥 استقبال رد من المشاهد:', answerData.userId);
+                    try {
+                        await peerConnection.setRemoteDescription(
+                            new RTCSessionDescription({
+                                type: 'answer',
+                                sdp: answerData.sdp
+                            })
+                        );
+                        console.log('✅ تم تعيين الرد من المشاهد:', answerData.userId);
+                        updateStatus(`✅ مشاهد متصل: ${answerData.userId}`, 'success');
+                    } catch (err) {
+                        console.error('💥 خطأ في تعيين الرد:', err);
+                    }
+                });
+
+                // 6. استقبال بيانات الاتصال (ICE candidates) من المشاهدين
+                socket.on('ice_candidate', async (candidateData) => {
+                    console.log('🧊 استقبال بيانات اتصال من المشاهد');
+                    try {
+                        if (candidateData.candidate) {
+                            await peerConnection.addIceCandidate(
+                                new RTCIceCandidate(candidateData.candidate)
+                            );
+                            console.log('🧊 تم إضافة بيانات الاتصال من المشاهد');
+                        }
+                    } catch (err) {
+                        console.error('💥 خطأ في إضافة بيانات الاتصال:', err);
+                    }
+                });
+
+                // 7. تحديث عدد المشاهدين
+                socket.on('viewer_count', (data) => {
+                    updateViewerCount(data.count);
+                    console.log('👥 عدد المشاهدين:', data.count);
+                });
+
+                // 8. إرسال البث للسيرفر
+                setTimeout(() => {
+                    if (socket.connected) {
+                        sendStreamOffer();
+                    }
+                }, 2000);
+
+            } catch (error) {
+                console.error('💥 خطأ في بدء البث:', error);
+                updateStatus(`💥 خطأ في بدء البث: ${error.message}`, 'error');
+                updateButtonState(false, false);
+                isBroadcasting = false;
+                
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+                
+                if (error.name === 'NotAllowedError') {
+                    alert('الرجاء السماح بالوصول إلى الكاميرا والمايكروفون.');
+                }
+            }
+        }
+
+        function setupPeerConnection() {
+            console.log('🌐 إنشاء اتصال WebRTC...');
+            
+            // إغلاق الاتصال القديم إذا كان موجوداً
+            if (peerConnection) {
+                peerConnection.close();
+            }
+
+            peerConnection = new RTCPeerConnection(config);
+
+            // إضافة Tracks من الكاميرا والمايكروفون
+            localStream.getTracks().forEach(track => {
+                console.log('➕ إضافة track:', track.kind);
+                peerConnection.addTrack(track, localStream);
+            });
+
+            // تبادل بيانات الاتصال (ICE candidates)
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate && socket.connected) {
+                    console.log('🧊 إرسال بيانات اتصال للسيرفر');
+                    socket.emit('ice_candidate', {
+                        streamId: document.getElementById('streamId').value,
+                        userId: 'broadcaster_' + Date.now(),
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // مراقبة حالة الاتصال
+            peerConnection.onconnectionstatechange = () => {
+                console.log('🔄 حالة اتصال WebRTC:', peerConnection.connectionState);
+                if (peerConnection.connectionState === 'connected') {
+                    updateStatus('🎉 🎉 🎉 الاتصال نجح! البث قيد التشغيل الآن 🎉 🎉 🎉', 'success');
+                    updateBroadcastStatus('نشط');
+                } else if (peerConnection.connectionState === 'failed') {
+                    updateStatus('💥 فشل الاتصال WebRTC', 'error');
+                    updateBroadcastStatus('فشل');
+                }
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('🧊 حالة ICE:', peerConnection.iceConnectionState);
+            };
+        }
+
+        async function sendStreamOffer() {
+            try {
+                console.log('📝 إنشاء عرض (Offer)...');
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                console.log('✅ تم إنشاء العرض');
+
+                setTimeout(() => {
+                    if (socket.connected && peerConnection.localDescription) {
+                        const streamId = document.getElementById('streamId').value;
+                        
+                        socket.emit('stream_offer', {
+                            streamId: streamId,
+                            sdp: peerConnection.localDescription.sdp,
+                            type: peerConnection.localDescription.type
+                        });
+                        
+                        console.log('📤 🎉 تم إرسال العرض! البث بدأ الآن.');
+                        updateStatus('📤 🎉 البث بدأ! افتح صفحة المشاهدة لرؤية البث.', 'success');
+                        updateButtonState(false, false);
+                    }
+                }, 1000);
+
+            } catch (err) {
+                console.error('💥 خطأ في إنشاء العرض:', err);
+                updateStatus('💥 خطأ في إنشاء العرض: ' + err.message, 'error');
+                updateButtonState(false, false);
+                isBroadcasting = false;
+            }
+        }
+
+        function stopBroadcast() {
+            updateButtonState(false, true);
+            updateStatus('🔄 جاري إيقاف البث...', 'info');
+
+            // إيقاف الكاميرا والمايكروفون
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    track.stop();
+                    console.log('⏹️ تم إيقاف:', track.kind);
+                });
+                localStream = null;
+            }
+
+            // إغلاق اتصال WebRTC
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+                console.log('⏹️ تم إغلاق اتصال WebRTC');
+            }
+
+            // قطع الاتصال بالسيرفر
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                console.log('⏹️ تم قطع الاتصال بالسيرفر');
+            }
+
+            // إخفاء معاينة الكاميرا
+            document.getElementById('previewSection').classList.add('hidden');
+            document.getElementById('localVideo').srcObject = null;
+
+            // تحديث الحالة
+            updateConnectionStatus('غير متصل');
+            updateBroadcastStatus('غير نشط');
+            updateViewerCount(0);
+            updateStatus('⏹️ تم إيقاف البث', 'info');
+            updateButtonState(false, false);
+            isBroadcasting = false;
+
+            console.log('✅ تم إيقاف البث بالكامل');
+        }
+
+        // تنظيف عند مغادرة الصفحة
+        window.addEventListener('beforeunload', () => {
+            if (isBroadcasting) {
+                stopBroadcast();
+            }
+        });
+
+        // إضافة دعم لوحة المفاتيح
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (isBroadcasting) {
+                    stopBroadcast();
+                }
+            } else if (e.key === 'Enter' && !isBroadcasting) {
+                startBroadcast();
+            }
+        });
+    </script>
+</body>
+</html>
