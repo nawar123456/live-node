@@ -174,33 +174,73 @@
             // };
 
                 peerConnection.ontrack = (event) => {
-                    console.log('🎥 Track received:', event.track.kind);
-                    const videoElement = document.getElementById('remoteVideo');
-                
-                    if (videoElement && event.streams && event.streams[0]) {
-                        videoElement.srcObject = event.streams[0];
-                        videoElement.muted = true; // Mute to allow autoplay
-                        videoElement.playsInline = true;
-                
-                        // Try to play (may fail without user interaction)
-                        var playPromise = videoElement.play();
-                        if(playPromise !== undefined) {
-                            playPromise.then(_ => {
-                                updateStatus('🎥 Stream loaded! Click the video to start playback.', 'success');
-                            }).catch(error => {
-                                console.warn('Autoplay blocked. User interaction required:', error);
-                    
-                                // Add click-to-play functionality
-                                videoElement.onclick = () => {
-                                    console.log('Press Detected!');
-                                    videoElement.muted = false;
-                                    videoElement.play().catch(e => console.error('Play failed:', e));
-                                    videoElement.onclick = null; // Remove after first click
-                                };
-                            });
-                        }
+                console.log('🎥 Track received:', event.track.kind);
+                const videoElement = document.getElementById('remoteVideo');
+            
+                if (!videoElement || !event.streams || !event.streams[0]) {
+                    console.error('No video element or stream available in ontrack!');
+                    updateStatus('❌ No stream detected in ontrack event', 'error');
+                    return;
+                }
+            
+                // Set the source and basic attributes
+                videoElement.srcObject = event.streams[0];
+                videoElement.muted = true;
+                videoElement.playsInline = true;
+            
+                // Log track details for debugging (check if video tracks exist)
+                const tracks = event.streams[0].getTracks();
+                const videoTracks = event.streams[0].getVideoTracks();
+                console.log('Stream tracks:', tracks); // Should show array with video/audio tracks
+                console.log('Video tracks count:', videoTracks.length); // Should be at least 1 for video
+            
+                if (videoTracks.length === 0) {
+                    updateStatus('❌ Stream received, but no video tracks found! Check broadcaster.', 'error');
+                    return;
+                }
+            
+                // Wait for metadata to load before attempting play (fixes AbortError)
+                videoElement.onloadedmetadata = () => {
+                    console.log('Metadata loaded, attempting autoplay...');
+                    const playPromise = videoElement.play();
+            
+                    if (playPromise !== undefined) {
+                        playPromise.then(() => {
+                            console.log('Autoplay succeeded!');
+                            updateStatus('🎉 Stream is playing automatically!', 'success');
+                            // Optionally unmute after success if desired
+                            // videoElement.muted = false;
+                        }).catch(error => {
+                            console.warn('Autoplay blocked. User interaction required:', error.name, error.message);
+                            updateStatus('🎥 Stream loaded! Click the video to start playback.', 'success');
+            
+                            // Add click-to-play functionality
+                            videoElement.onclick = () => {
+                                console.log('Press Detected!');
+                                videoElement.muted = false;
+                                videoElement.play()
+                                    .then(() => {
+                                        console.log('Manual play succeeded!');
+                                        updateStatus('🎉 Stream is now playing!', 'success');
+                                    })
+                                    .catch(e => {
+                                        console.error('Manual play failed:', e.name, e.message);
+                                        updateStatus('❌ Manual play failed: ' + e.message, 'error');
+                                    });
+                                videoElement.onclick = null; // Remove after first click
+                            };
+                        });
                     }
                 };
+            
+                // Fallback: If loadedmetadata doesn't fire (rare), force a load
+                setTimeout(() => {
+                    if (videoElement.readyState === 0) {
+                        console.warn('Metadata not loaded yet, forcing load...');
+                        videoElement.load();
+                    }
+                }, 1000); // 1-second delay as a safety net
+            };
 
 
                 peerConnection.onicecandidate = (event) => {
