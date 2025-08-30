@@ -11,7 +11,7 @@ router.post('/create', async (req, res, next) => {
   const mockUserId = '507f1f77bcf86cd799439011'; // ObjectId تجريبي صحيح
 
     const stream = await Stream.create({
-      userId: req.user.id,
+      userId: mockUserId,
       title,
       category,
       tags,
